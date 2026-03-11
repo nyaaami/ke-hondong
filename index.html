@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>케혼동~케타와쿠편~</title>
+  <title>歌詞単語帳</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;700&family=Noto+Sans+KR:wght@300;400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -245,8 +245,8 @@ function NicknameScreen({ onDone, dictProgress = 0, dictReady = false }) {
         <div style={{ fontSize:10, letterSpacing:5, color:"var(--text-mute)", textTransform:"uppercase", marginBottom:10 }}>Japanese Lyric Dictionary</div>
         <h1 className="jp" style={{ fontSize:42, fontWeight:700, marginBottom:6, background:"linear-gradient(135deg,#f0e0c0 0%,var(--gold) 40%,var(--purple) 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>케혼동</h1>
         <p style={{ color:"var(--text-dim)", fontSize:13, marginBottom:36, lineHeight:1.6 }}>
-          케타와쿠편<br/>
-          <span style={{ color:"var(--text-mute)", fontSize:11 }}>주의: 허접함</span>
+          ~케타와쿠편~<br/>
+          <span style={{ color:"var(--text-mute)", fontSize:11 }}>형태소 분석으로 활용형도 찾아줘요</span>
         </p>
         <input className="input-base" value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&val.trim()&&onDone(val.trim())} placeholder="닉네임을 입력하세요" autoFocus style={{ fontSize:16, padding:"15px 18px", borderRadius:14, textAlign:"center", marginBottom:12 }} />
         <button className="btn" onClick={()=>val.trim()&&onDone(val.trim())} style={{ width:"100%", background:"linear-gradient(135deg,#c9943a,#b8832a)", color:"#0e0a04", borderRadius:14, padding:15, fontWeight:700, fontSize:15, boxShadow:"0 4px 24px rgba(212,168,83,.25)" }}>
@@ -387,7 +387,7 @@ function App() {
   useEffect(() => {
     if (!nickname) return;
     Promise.all([
-      sb.from("songs").select("*").order("created_at",{ascending:false}),
+      sb.from("songs").select("*"),
       sb.from("words").select("*"),
       sb.from("bookmarks").select("*").eq("nickname",nickname)
     ]).then(([s,w,b]) => {
@@ -397,7 +397,7 @@ function App() {
       setLoading(false);
     });
     const ch = sb.channel("all")
-      .on("postgres_changes",{event:"*",schema:"public",table:"songs"},  ()=>sb.from("songs").select("*").order("created_at",{ascending:false}).then(r=>setSongs(r.data||[])))
+      .on("postgres_changes",{event:"*",schema:"public",table:"songs"},  ()=>sb.from("songs").select("*").then(r=>setSongs(r.data||[])))
       .on("postgres_changes",{event:"*",schema:"public",table:"words"},  ()=>sb.from("words").select("*").then(r=>setWords(r.data||[])))
       .on("postgres_changes",{event:"*",schema:"public",table:"bookmarks"},()=>sb.from("bookmarks").select("*").eq("nickname",nickname).then(r=>setBookmarks(r.data||[])))
       .subscribe();
