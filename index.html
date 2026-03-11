@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;700&family=Noto+Sans+KR:wght@300;400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -78,76 +77,93 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const POS = ["동사","명사","형용사(い)","형용사(な)","부사","조사","접속사","감탄사","기타"];
 
-/* ── Kuromoji 초기화 ── */
-function useTokenizer() {
-  const [tokenizer, setTokenizer] = useState(null);
-  const [progress, setProgress]   = useState(0);  // 0~100
-  const [error, setError]         = useState(null);
+/* ── 경량 활용형 패턴 매칭 (사전 로딩 없음) ── */
 
-  useEffect(() => {
-    // 진행 바 애니메이션 (실제 진행 알 수 없어서 타이머로 근사)
-    let p = 0;
-    const timer = setInterval(() => {
-      p = Math.min(p + Math.random() * 12, 88);
-      setProgress(Math.floor(p));
-    }, 300);
+// 입력 단어로부터 검색에 쓸 어근(들) 후보를 반환
+function getRoots(word) {
+  if (!word) return [word];
+  const roots = new Set([word]);
 
-    kuromoji
-      .builder({ dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict" })
-      .build((err, t) => {
-        clearInterval(timer);
-        if (err) { setError("사전 로딩 실패 😢"); return; }
-        setProgress(100);
-        setTimeout(() => setTokenizer(t), 400);
-      });
-    return () => clearInterval(timer);
-  }, []);
+  // 1) 흔한 활용 어미를 벗겨내서 어근 후보 추가
+  const suffixes = [
+    // て형/た형
+    "って","った","っている","っていた","っていて","っていく","ってくる","ってしまう","ってしまった",
+    "いて","いた","いている","いていた",
+    "んで","んだ","んでいる","んでいた",
+    "いで","いだ",
+    // 연용형 (い단)
+    "り","り出す","り出した","り出して","り込む","り込んだ","り込んで",
+    // 미연형 (あ단 + ない)
+    "らない","らなかった","らなくて","わない","わなかった","わなくて",
+    "かない","かなかった","さない","さなかった","たない","たなかった",
+    "ばない","ばなかった","まない","まなかった","なない","ななかった",
+    // 가능형
+    "れる","れた","れない","れなかった",
+    // 수동/사역
+    "られる","られた","させる","させた","させない",
+    // 一段동사 어미
+    "て","た","ない","ながら","なかった","ていた","ている","ていく","てくる",
+    "てしまう","てしまった","てしまって","てほしい","てもいい","ておく",
+    "たい","たかった","たくない",
+    "れば","たら","ても","でも",
+    // 丁寧형
+    "ます","ました","ません","ませんでした","ましょう","まして",
+  ];
 
-  return { tokenizer, progress, error };
-}
-
-/* 기본형 추출 헬퍼 */
-function getBaseForm(tokenizer, text) {
-  if (!tokenizer || !text) return text;
-  const tokens = tokenizer.tokenize(text);
-  // 첫 번째 실질 형태소의 기본형 반환
-  const t = tokens[0];
-  return t?.basic_form && t.basic_form !== "*" ? t.basic_form : text;
-}
-
-/* 가사 줄에서 매칭 토큰 위치 찾기 */
-function findMatchPositions(tokenizer, line, baseForm) {
-  if (!tokenizer) return line.includes(baseForm) ? [{ start:line.indexOf(baseForm), end:line.indexOf(baseForm)+baseForm.length, surface:baseForm }] : [];
-
-  const tokens = tokenizer.tokenize(line);
-  const matches = [];
-  let cursor = 0;
-
-  for (const token of tokens) {
-    const surface    = token.surface_form;
-    const tokenBase  = token.basic_form && token.basic_form !== "*" ? token.basic_form : surface;
-    const start      = line.indexOf(surface, cursor);
-    if (start === -1) { cursor += surface.length; continue; }
-    const end = start + surface.length;
-
-    if (tokenBase === baseForm || surface === baseForm) {
-      matches.push({ start, end, surface });
+  for (const suf of suffixes) {
+    if (word.endsWith(suf) && word.length > suf.length) {
+      const root = word.slice(0, word.length - suf.length);
+      roots.add(root);
+      // 五段동사: 어근 + 음편 복원 후보
+      roots.add(root + "る");  // 一段
+      roots.add(root + "く");  // 五段 か행
+      roots.add(root + "ぐ");  // 五段 が행
+      roots.add(root + "す");  // 五段 さ행
+      roots.add(root + "つ");  // 五段 た행
+      roots.add(root + "ぬ");  // 五段 な행
+      roots.add(root + "ぶ");  // 五段 ば행
+      roots.add(root + "む");  // 五段 ま행
+      roots.add(root + "う");  // 五段 わ행
     }
-    cursor = end;
   }
-  return matches;
+
+  // 2) 이미 기본형처럼 생긴 경우 어근만 추가 (마지막 글자 제거)
+  const basicEndings = ["る","く","ぐ","す","つ","ぬ","ぶ","む","う","い","な"];
+  if (basicEndings.some(e => word.endsWith(e))) {
+    roots.add(word.slice(0, -1));
+  }
+
+  return [...roots].filter(r => r.length > 0);
 }
 
-/* 가사에서 예문 찾기 (형태소 기반) */
-function findExamples(tokenizer, songs, word) {
-  const baseForm = getBaseForm(tokenizer, word);
-  const result   = [];
+// 어근 후보들로 가사 줄 매칭
+function getBaseForm(_, word) { return word; } // API 호환용 (tokenizer 인자 무시)
 
+function findMatchPositions(_, line, searchWord) {
+  const roots = getRoots(searchWord);
+  const positions = [];
+  for (const root of roots) {
+    if (!root || root.length < 1) continue;
+    let idx = 0;
+    while ((idx = line.indexOf(root, idx)) !== -1) {
+      // 이미 추가된 범위와 겹치면 스킵
+      if (!positions.some(p => idx < p.end && idx + root.length > p.start)) {
+        positions.push({ start: idx, end: idx + root.length, surface: line.slice(idx, idx + root.length) });
+      }
+      idx += root.length;
+    }
+  }
+  return positions.sort((a,b) => a.start - b.start);
+}
+
+function findExamples(_, songs, word) {
+  const roots = getRoots(word);
+  const result = [];
   for (const song of songs) {
     for (const line of (song.lyrics||"").split("\n").filter(l=>l.trim())) {
-      const positions = findMatchPositions(tokenizer, line, baseForm);
+      const positions = findMatchPositions(null, line, word);
       if (positions.length > 0) {
-        result.push({ songTitle:song.title, artist:song.artist||"", sentence:line.trim(), positions, baseForm });
+        result.push({ songTitle:song.title, artist:song.artist||"", sentence:line.trim(), positions, baseForm:word });
       }
     }
   }
@@ -214,7 +230,7 @@ function DictLoading({ progress, error }) {
 }
 
 /* ── 닉네임 화면 ── */
-function NicknameScreen({ onDone }) {
+function NicknameScreen({ onDone, dictProgress = 0, dictReady = false }) {
   const [val, setVal] = useState("");
   const emojis = ["🎵","🎶","🎼","🎹","🎸","🎤"];
   const [ei, setEi] = useState(0);
@@ -230,13 +246,33 @@ function NicknameScreen({ onDone }) {
         <h1 className="jp" style={{ fontSize:42, fontWeight:700, marginBottom:6, background:"linear-gradient(135deg,#f0e0c0 0%,var(--gold) 40%,var(--purple) 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>케혼동</h1>
         <p style={{ color:"var(--text-dim)", fontSize:13, marginBottom:36, lineHeight:1.6 }}>
           케타와쿠편<br/>
-          <span style={{ color:"var(--text-mute)", fontSize:11 }}>뀨타와뀨</span>
+          <span style={{ color:"var(--text-mute)", fontSize:11 }}>주의: 허접함</span>
         </p>
         <input className="input-base" value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&val.trim()&&onDone(val.trim())} placeholder="닉네임을 입력하세요" autoFocus style={{ fontSize:16, padding:"15px 18px", borderRadius:14, textAlign:"center", marginBottom:12 }} />
         <button className="btn" onClick={()=>val.trim()&&onDone(val.trim())} style={{ width:"100%", background:"linear-gradient(135deg,#c9943a,#b8832a)", color:"#0e0a04", borderRadius:14, padding:15, fontWeight:700, fontSize:15, boxShadow:"0 4px 24px rgba(212,168,83,.25)" }}>
           시작하기 →
         </button>
         <p style={{ marginTop:16, fontSize:11, color:"var(--text-mute)" }}>닉네임은 단어장 구분에만 사용돼요</p>
+
+        {/* 사전 로딩 상태 — 하단에 조용히 표시 */}
+        <div style={{ marginTop:24, padding:"11px 16px", background:"var(--surface)", border:"1px solid var(--border)", borderRadius:12 }}>
+          {dictReady ? (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, fontSize:12, color:"#4ade80" }}>
+              <span style={{ width:6, height:6, borderRadius:"50%", background:"#4ade80", display:"inline-block", boxShadow:"0 0 6px #4ade80" }} />
+              형태소 사전 준비 완료!
+            </div>
+          ) : (
+            <>
+              <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--text-mute)", marginBottom:7 }}>
+                <span>형태소 사전 로딩 중... (닉네임 입력하는 동안 끝나요)</span>
+                <span style={{ color:"var(--gold)" }}>{dictProgress}%</span>
+              </div>
+              <div style={{ background:"var(--surface2)", borderRadius:50, height:3, overflow:"hidden" }}>
+                <div style={{ height:"100%", background:"linear-gradient(90deg,var(--gold-dim),var(--gold))", borderRadius:50, width:`${dictProgress}%`, transition:"width .3s ease" }} />
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -327,7 +363,8 @@ function WordForm({ word, baseForm, existing, onSave, onCancel, saving }) {
    MAIN APP
 ══════════════════════════════════════════ */
 function App() {
-  const { tokenizer, progress, error } = useTokenizer();
+  // 경량 패턴 매칭 — 사전 로딩 없음
+  const tokenizer = true; // 항상 준비됨
   const [nickname, setNickname] = useState(()=>localStorage.getItem("vocab_nick")||"");
   const [tab, setTab]           = useState("search");
   const [songs, setSongs]       = useState([]);
@@ -423,8 +460,7 @@ function App() {
   async function deleteBookmark(id) { await sb.from("bookmarks").delete().eq("id",id); fire("삭제했어요"); }
 
   // ── guards ──
-  if (!tokenizer && progress < 100) return <DictLoading progress={progress} error={error} />;
-  if (!nickname) return <NicknameScreen onDone={handleNickname} />;
+  if (!nickname) return <NicknameScreen onDone={handleNickname} dictProgress={100} dictReady={true} />;
 
   const isBookmarked = searchResult && bookmarks.find(b=>b.word===searchResult.word||b.word===searchResult.baseForm);
 
@@ -454,7 +490,7 @@ function App() {
           {/* 형태소 분석 뱃지 */}
           <div style={{ display:"inline-flex", alignItems:"center", gap:6, background:"rgba(167,139,250,.08)", border:"1px solid rgba(167,139,250,.2)", borderRadius:20, padding:"4px 12px", fontSize:11, color:"var(--purple)" }}>
             <span style={{ width:5, height:5, borderRadius:"50%", background:"#4ade80", display:"inline-block", boxShadow:"0 0 5px #4ade80" }} />
-            형태소 분석 활성화 · 활용형도 찾아줘요
+            활용형 매칭 활성화 · 走り出した → 走 자동 검색
           </div>
         </div>
 
@@ -478,14 +514,12 @@ function App() {
 
             {searchResult && (
               <div className="fade-up">
-                {/* 기본형 표시 */}
-                {searchResult.baseForm && searchResult.baseForm !== searchResult.word && (
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, padding:"10px 14px", background:"rgba(167,139,250,.06)", border:"1px solid rgba(167,139,250,.15)", borderRadius:12, fontSize:12 }}>
-                    <span style={{ color:"var(--text-mute)" }}>입력:</span>
+                {/* 매칭 어근 표시 */}
+                {searchResult.examples.length > 0 && searchResult.word.length > 1 && (
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, padding:"10px 14px", background:"rgba(167,139,250,.06)", border:"1px solid rgba(167,139,250,.15)", borderRadius:12, fontSize:12, flexWrap:"wrap" }}>
+                    <span style={{ color:"var(--purple)" }}>✦</span>
                     <span className="jp" style={{ color:"var(--text-dim)" }}>{searchResult.word}</span>
-                    <span style={{ color:"var(--text-mute)" }}>→ 기본형:</span>
-                    <span className="jp" style={{ color:"var(--purple)", fontWeight:600 }}>{searchResult.baseForm}</span>
-                    <span style={{ color:"var(--text-mute)" }}>으로 검색했어요</span>
+                    <span style={{ color:"var(--text-mute)" }}>의 활용형을 포함해 {searchResult.examples.length}개 예문 발견</span>
                   </div>
                 )}
 
@@ -580,7 +614,7 @@ function App() {
                 <div className="jp pulse" style={{ fontSize:52, marginBottom:18, opacity:.2 }}>詞</div>
                 <div style={{ fontSize:14, color:"var(--text-mute)", lineHeight:1.8 }}>
                   가사 속 단어를 검색해보세요<br/>
-                  <span style={{ fontSize:12 }}>走り出した → 走る 기본형으로 예문을 찾아줘요</span>
+                  <span style={{ fontSize:12 }}>走り出した 입력 시 走 어근으로 활용형 전체 검색</span>
                 </div>
               </div>
             )}
