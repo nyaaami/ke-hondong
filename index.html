@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>케타와쿠×케혼동</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;700&family=Noto+Sans+KR:wght@300;400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080810;
+      --surface:   #0f0f1a;
+      --surface2:  #161625;
+      --border:    #1e1e35;
+      --border2:   #2a2a45;
+      --gold:      #d4a853;
+      --gold-dim:  #8a6830;
+      --purple:    #a78bfa;
+      --purple-dim:#5b3fa8;
+      --text:      #e8e0d0;
+      --text-dim:  #7a7090;
+      --text-mute: #3a3555;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', sans-serif; }
+    #root { min-height: 100vh; }
+
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    input, textarea, button, select { font-family: inherit; }
+    input::placeholder, textarea::placeholder { color: var(--text-mute); }
+
+    @keyframes fadeUp   { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes fadeIn   { from{opacity:0} to{opacity:1} }
+    @keyframes pulse    { 0%,100%{opacity:.3} 50%{opacity:.8} }
+    @keyframes toastIn  { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes spin     { to{transform:rotate(360deg)} }
+    @keyframes glow     { 0%,100%{box-shadow:0 0 20px rgba(212,168,83,.15)} 50%{box-shadow:0 0 40px rgba(212,168,83,.3)} }
+
+    .fade-up   { animation: fadeUp  .35s cubic-bezier(.22,1,.36,1) forwards; }
+    .fade-in   { animation: fadeIn  .25s ease forwards; }
+    .pulse     { animation: pulse   1.4s infinite; }
+    .toast-in  { animation: toastIn .3s ease forwards; }
+
+    .btn {
+      cursor: pointer; border: none;
+      transition: transform .15s, opacity .15s, box-shadow .15s;
+    }
+    .btn:hover  { transform: translateY(-2px); }
+    .btn:active { transform: translateY(0); opacity: .85; }
+
+    .tab-btn { cursor: pointer; border: none; background: none; transition: all .2s; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      transition: border-color .2s;
+    }
+    .card:hover { border-color: var(--border2); }
+    .card-gold:hover  { border-color: var(--gold-dim) !important; }
+    .card-purple:hover { border-color: var(--purple-dim) !important; }
+
+    .jp { font-family: 'Shippori Mincho', serif; }
+
+    .input-base {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 12px;
+      padding: 13px 16px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .input-base:focus {
+      border-color: var(--gold-dim);
+      box-shadow: 0 0 0 3px rgba(212,168,83,.08);
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 10px;
+      letter-spacing: .08em;
+      padding: 3px 9px;
+      border-radius: 20px;
+      background: rgba(167,139,250,.12);
+      color: var(--purple);
+      border: 1px solid rgba(167,139,250,.2);
+    }
+    .tag-gold {
+      background: rgba(212,168,83,.1);
+      color: var(--gold);
+      border-color: rgba(212,168,83,.2);
+    }
+
+    /* Noise texture overlay */
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 999;
+      opacity: .025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+// ================================================================
+// 🔧 Supabase 설정 뀨
+// ================================================================
+const SUPABASE_URL  = "https://rptqunvbjeqlylllpmwa.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwdHF1bnZiamVxbHlsbGxwbXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMTA0MDAsImV4cCI6MjA4ODc4NjQwMH0.ckbFxyRH7NyPkCNZBliLxGLUM3immAB7fPdyeIDjds8";
+// ================================================================
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const POS = ["동사","명사","형용사(い)","형용사(な)","부사","조사","접속사","감탄사","기타"];
+
+/* ── tiny helpers ── */
+function useInterval(fn, ms) {
+  const cb = useRef(fn);
+  useEffect(() => { cb.current = fn; }, [fn]);
+  useEffect(() => { const id = setInterval(() => cb.current(), ms); return () => clearInterval(id); }, [ms]);
+}
+
+/* ══════════════════════════════════════════
+   SCREENS
+══════════════════════════════════════════ */
+
+/* Splash / nickname gate */
+function NicknameScreen({ onDone }) {
+  const [val, setVal] = useState("");
+  const emojis = ["🎵","🎶","🎼","🎹","🎸","🎤"];
+  const [ei, setEi] = useState(0);
+  useInterval(() => setEi(e => (e+1) % emojis.length), 1200);
+
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24, position:"relative", overflow:"hidden" }}>
+      {/* bg blobs */}
+      <div style={{ position:"fixed", width:500, height:500, borderRadius:"50%", background:"radial-gradient(circle, rgba(167,139,250,.06) 0%, transparent 70%)", top:-100, right:-100, pointerEvents:"none" }} />
+      <div style={{ position:"fixed", width:400, height:400, borderRadius:"50%", background:"radial-gradient(circle, rgba(212,168,83,.05) 0%, transparent 70%)", bottom:-80, left:-80, pointerEvents:"none" }} />
+
+      <div className="fade-up" style={{ width:"100%", maxWidth:360, textAlign:"center" }}>
+        {/* animated emoji */}
+        <div className="fade-in" key={ei} style={{ fontSize:48, marginBottom:20, lineHeight:1 }}>{emojis[ei]}</div>
+
+        <div style={{ fontSize:11, letterSpacing:5, color:"var(--text-mute)", textTransform:"uppercase", marginBottom:10 }}>
+          Japanese Lyric Dictionary
+        </div>
+        <h1 className="jp" style={{
+          fontSize:42, fontWeight:700, marginBottom:6,
+          background:"linear-gradient(135deg, #f0e0c0 0%, var(--gold) 40%, var(--purple) 100%)",
+          WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
+          lineHeight:1.1
+        }}>케혼동×케타와쿠</h1>
+        <p style={{ color:"var(--text-dim)", fontSize:13, marginBottom:36, lineHeight:1.6 }}>
+          뀨타와뀨<br/>
+          <span style={{ color:"var(--text-mute)", fontSize:11 }}>아..클로드녀석 멘트구려</span>
+        </p>
+
+        <div style={{ position:"relative", marginBottom:12 }}>
+          <input
+            className="input-base"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => e.key==="Enter" && val.trim() && onDone(val.trim())}
+            placeholder="닉네임을 입력하세요"
+            autoFocus
+            style={{ fontSize:16, padding:"15px 18px", borderRadius:14, textAlign:"center" }}
+          />
+        </div>
+        <button className="btn" onClick={() => val.trim() && onDone(val.trim())} style={{
+          width:"100%",
+          background:"linear-gradient(135deg, #c9943a, #b8832a)",
+          color:"#0e0a04", borderRadius:14, padding:"15px",
+          fontWeight:700, fontSize:15, letterSpacing:".03em",
+          boxShadow:"0 4px 24px rgba(212,168,83,.25)",
+        }}>
+          시작하기 →
+        </button>
+        <p style={{ marginTop:16, fontSize:11, color:"var(--text-mute)" }}>닉네임은 단어장 구분에만 사용돼요</p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Tab bar ── */
+function TabBar({ tab, setTab, counts }) {
+  const tabs = [
+    { id:"search",    icon:"🔍", label:"검색" },
+    { id:"words",     icon:"🌐", label:`단어 ${counts.words}` },
+    { id:"songs",     icon:"🎵", label:`노래 ${counts.songs}` },
+    { id:"bookmarks", icon:"📚", label:`내 단어장 ${counts.bookmarks}` },
+  ];
+  return (
+    <div style={{ display:"flex", gap:3, background:"rgba(15,15,26,.8)", backdropFilter:"blur(12px)", borderRadius:16, padding:4, border:"1px solid var(--border)", position:"sticky", top:12, zIndex:10 }}>
+      {tabs.map(t => (
+        <button key={t.id} className="tab-btn" onClick={() => setTab(t.id)} style={{
+          flex:1, padding:"9px 4px", borderRadius:12,
+          background: tab===t.id ? "var(--surface2)" : "transparent",
+          color: tab===t.id ? "var(--gold)" : "var(--text-mute)",
+          fontSize:11, fontWeight: tab===t.id ? 600 : 400,
+          border: tab===t.id ? "1px solid var(--border2)" : "1px solid transparent",
+          display:"flex", flexDirection:"column", alignItems:"center", gap:3
+        }}>
+          <span style={{ fontSize:14 }}>{t.icon}</span>
+          <span>{t.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── Toast ── */
+function Toast({ msg, type }) {
+  return (
+    <div className="toast-in" style={{
+      position:"fixed", top:20, left:"50%", transform:"translateX(-50%)",
+      zIndex:1000, whiteSpace:"nowrap",
+      background: type==="err" ? "#2a1010" : "#0f1f14",
+      border:`1px solid ${type==="err" ? "#6b2020" : "#2a6b3a"}`,
+      color: type==="err" ? "#f87171" : "#6ee7a0",
+      padding:"10px 20px", borderRadius:50, fontSize:13,
+      boxShadow:"0 8px 32px rgba(0,0,0,.5)"
+    }}>{msg}</div>
+  );
+}
+
+/* ── Spinner ── */
+function Spinner() {
+  return <div style={{ width:18, height:18, border:"2px solid var(--border2)", borderTopColor:"var(--gold)", borderRadius:"50%", animation:"spin .7s linear infinite", display:"inline-block" }} />;
+}
+
+/* ── Word card in search result ── */
+function WordCard({ result, isBookmarked, onBookmark, onEdit, nickname }) {
+  const { word, found, examples } = result;
+
+  return (
+    <div className="fade-up">
+      {/* header */}
+      <div className="card" style={{ marginBottom:10, overflow:"hidden" }}>
+        <div style={{ padding:"24px 24px 20px", background:"linear-gradient(135deg, rgba(22,18,40,.8), var(--surface))", borderBottom:"1px solid var(--border)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
+            <div style={{ flex:1 }}>
+              {found?.part_of_speech && <div className="tag" style={{ marginBottom:10 }}>{found.part_of_speech}</div>}
+              <div className="jp" style={{ fontSize:44, fontWeight:700, color:"var(--text)", lineHeight:1, letterSpacing:"-.02em" }}>{word}</div>
+              {found?.reading && <div style={{ fontSize:15, color:"var(--purple)", marginTop:8, letterSpacing:".05em" }}>{found.reading}</div>}
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8, flexShrink:0 }}>
+              <button className="btn" onClick={onBookmark} style={{
+                background: isBookmarked ? "rgba(167,139,250,.15)" : "transparent",
+                border:`1px solid ${isBookmarked ? "var(--purple-dim)" : "var(--border2)"}`,
+                color: isBookmarked ? "var(--purple)" : "var(--text-mute)",
+                borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:500
+              }}>
+                {isBookmarked ? "★ 저장됨" : "☆ 저장"}
+              </button>
+              <button className="btn" onClick={onEdit} style={{
+                background:"transparent", border:"1px solid var(--border2)",
+                color:"var(--text-mute)", borderRadius:10, padding:"7px 14px", fontSize:11
+              }}>
+                {found ? "✏️ 수정" : "+ 뜻 등록"}
+              </button>
+            </div>
+          </div>
+
+          {found ? (
+            <div style={{ marginTop:18 }}>
+              <div style={{
+                fontSize:20, color:"var(--gold)", fontWeight:500,
+                background:"rgba(212,168,83,.07)", padding:"13px 16px",
+                borderRadius:12, border:"1px solid rgba(212,168,83,.12)", lineHeight:1.5
+              }}>
+                {found.meaning_ko}
+              </div>
+              {found.note && (
+                <div style={{ marginTop:10, fontSize:12, color:"var(--text-dim)", background:"var(--surface2)", padding:"11px 14px", borderRadius:10, borderLeft:"2px solid var(--purple-dim)", lineHeight:1.8 }}>
+                  {found.note}
+                </div>
+              )}
+              <div style={{ marginTop:10, fontSize:11, color:"var(--text-mute)" }}>등록: {found.added_by}</div>
+            </div>
+          ) : (
+            <div style={{ marginTop:16, padding:"14px 16px", background:"var(--surface2)", borderRadius:12, border:"1px dashed var(--border2)", textAlign:"center" }}>
+              <div style={{ fontSize:13, color:"var(--text-dim)", marginBottom:4 }}>아직 등록된 뜻이 없어요</div>
+              <div style={{ fontSize:11, color:"var(--text-mute)" }}>등록하면 동아리원 모두와 공유돼요 🌐</div>
+            </div>
+          )}
+        </div>
+
+        {/* examples */}
+        <div style={{ padding:"18px 24px" }}>
+          <div style={{ fontSize:11, letterSpacing:3, color:"var(--text-mute)", marginBottom:14, display:"flex", alignItems:"center", gap:8 }}>
+            🎵 가사 예문
+            <span style={{ background:"var(--surface2)", color:"var(--text-dim)", padding:"2px 8px", borderRadius:20, fontSize:10 }}>{examples.length}개</span>
+          </div>
+          {examples.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"20px 0", color:"var(--text-mute)", fontSize:12, border:"1px dashed var(--border)", borderRadius:12 }}>
+              등록된 노래에서 찾지 못했어요
+            </div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {examples.map((ex, i) => (
+                <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:12, padding:"13px 16px" }}>
+                  <div style={{ fontSize:10, color:"var(--text-mute)", marginBottom:7, display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ color:"var(--gold-dim)" }}>♪</span>
+                    <span>{ex.songTitle}</span>
+                    {ex.artist && <span style={{ color:"var(--border2)" }}>· {ex.artist}</span>}
+                  </div>
+                  <div className="jp" style={{ fontSize:16, color:"#d4c8b4", lineHeight:1.9 }}>
+                    {ex.sentence.split(word).map((part, j, arr) => (
+                      <span key={j}>
+                        {part}
+                        {j < arr.length-1 && (
+                          <span style={{ color:"var(--gold)", fontWeight:700, background:"rgba(212,168,83,.12)", padding:"1px 3px", borderRadius:4, boxShadow:"0 0 8px rgba(212,168,83,.2)" }}>
+                            {word}
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Word form ── */
+function WordForm({ word, existing, onSave, onCancel, saving }) {
+  const [form, setForm] = useState({
+    reading: existing?.reading || "",
+    meaning_ko: existing?.meaning_ko || "",
+    part_of_speech: existing?.part_of_speech || "동사",
+    note: existing?.note || ""
+  });
+  const set = (k, v) => setForm(f => ({...f, [k]: v}));
+
+  return (
+    <div className="card fade-up" style={{ padding:22, border:"1px solid var(--purple-dim)" }}>
+      <div style={{ fontSize:13, color:"var(--purple)", marginBottom:18, display:"flex", alignItems:"center", gap:8 }}>
+        <span>🌐</span>
+        <span className="jp" style={{ fontSize:18, color:"var(--text)" }}>{word}</span>
+        <span style={{ color:"var(--text-mute)" }}>— {existing ? "수정 (모두에게 반영)" : "새 단어 등록 (모두와 공유)"}</span>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+        <div>
+          <div style={{ fontSize:11, color:"var(--text-mute)", marginBottom:6 }}>읽기 (히라가나)</div>
+          <input className="input-base jp" value={form.reading} onChange={e => set("reading", e.target.value)} placeholder="とける" />
+        </div>
+        <div>
+          <div style={{ fontSize:11, color:"var(--text-mute)", marginBottom:6 }}>품사</div>
+          <select className="input-base" value={form.part_of_speech} onChange={e => set("part_of_speech", e.target.value)} style={{ appearance:"none", cursor:"pointer" }}>
+            {POS.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ marginBottom:10 }}>
+        <div style={{ fontSize:11, color:"var(--text-mute)", marginBottom:6 }}>한국어 뜻 <span style={{ color:"#c46060" }}>*</span></div>
+        <input className="input-base" value={form.meaning_ko} onChange={e => set("meaning_ko", e.target.value)} placeholder="녹다, 융해되다" style={{ fontSize:16 }} />
+      </div>
+
+      <div style={{ marginBottom:18 }}>
+        <div style={{ fontSize:11, color:"var(--text-mute)", marginBottom:6 }}>메모 <span style={{ color:"var(--text-mute)" }}>(활용/문법, 선택)</span></div>
+        <textarea className="input-base" value={form.note} onChange={e => set("note", e.target.value)} rows={2} placeholder="~てゆく와 자주 쓰여 '점점 ~되어가다'는 뉘앙스" style={{ resize:"none", lineHeight:1.7 }} />
+      </div>
+
+      <div style={{ display:"flex", gap:8 }}>
+        <button className="btn" onClick={onCancel} style={{ flex:1, background:"var(--surface2)", border:"1px solid var(--border2)", color:"var(--text-mute)", borderRadius:12, padding:13, fontSize:13 }}>취소</button>
+        <button className="btn" onClick={() => onSave(form)} disabled={saving || !form.meaning_ko.trim()} style={{
+          flex:2, borderRadius:12, padding:13, fontSize:14, fontWeight:600,
+          background: form.meaning_ko.trim() ? "linear-gradient(135deg, #8b5cf6, #6d3fd6)" : "var(--surface2)",
+          color: form.meaning_ko.trim() ? "#fff" : "var(--text-mute)",
+          border:"none",
+          display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+          boxShadow: form.meaning_ko.trim() ? "0 4px 20px rgba(139,92,246,.25)" : "none"
+        }}>
+          {saving ? <Spinner /> : "🌐 모두와 공유하기"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/* ══════════════════════════════════════════
+   MAIN APP
+══════════════════════════════════════════ */
+function App() {
+  const [nickname, setNickname] = useState(() => localStorage.getItem("vocab_nick") || "");
+  const [tab, setTab]           = useState("search");
+  const [songs, setSongs]       = useState([]);
+  const [words, setWords]       = useState([]);
+  const [bookmarks, setBookmarks] = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  // search
+  const [query, setQuery]           = useState("");
+  const [searchResult, setSearchResult] = useState(null);
+  const [showForm, setShowForm]     = useState(false);
+  const [savingWord, setSavingWord] = useState(false);
+
+  // songs
+  const [selectedSong, setSelectedSong] = useState(null);
+  const [showAddSong, setShowAddSong]   = useState(false);
+  const [newSong, setNewSong] = useState({ title:"", artist:"", lyrics:"" });
+
+  const [toast, setToast] = useState(null);
+
+  function fire(msg, type="ok") {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2500);
+  }
+
+  // ── load data ──
+  useEffect(() => {
+    if (!nickname) return;
+    Promise.all([
+      sb.from("songs").select("*").order("created_at", { ascending:false }),
+      sb.from("words").select("*"),
+      sb.from("bookmarks").select("*").eq("nickname", nickname)
+    ]).then(([s, w, b]) => {
+      setSongs(s.data || []);
+      setWords(w.data || []);
+      setBookmarks(b.data || []);
+      setLoading(false);
+    });
+
+    // realtime
+    const ch = sb.channel("all")
+      .on("postgres_changes", { event:"*", schema:"public", table:"songs" }, () => sb.from("songs").select("*").order("created_at",{ascending:false}).then(r => setSongs(r.data||[])))
+      .on("postgres_changes", { event:"*", schema:"public", table:"words" }, () => sb.from("words").select("*").then(r => setWords(r.data||[])))
+      .on("postgres_changes", { event:"*", schema:"public", table:"bookmarks" }, () => sb.from("bookmarks").select("*").eq("nickname",nickname).then(r => setBookmarks(r.data||[])))
+      .subscribe();
+    return () => sb.removeChannel(ch);
+  }, [nickname]);
+
+  function handleNickname(n) {
+    localStorage.setItem("vocab_nick", n);
+    setNickname(n);
+  }
+
+  function findExamples(word) {
+    const res = [];
+    for (const s of songs) {
+      for (const line of (s.lyrics||"").split("\n").filter(l=>l.trim())) {
+        if (line.includes(word)) res.push({ songTitle:s.title, artist:s.artist||"", sentence:line.trim() });
+      }
+    }
+    return res;
+  }
+
+  function handleSearch() {
+    const w = query.trim();
+    if (!w) return;
+    const found = words.find(x => x.word === w) || null;
+    setSearchResult({ word:w, found, examples:findExamples(w) });
+    setShowForm(!found);
+  }
+
+  async function saveWord(form) {
+    setSavingWord(true);
+    const payload = { word:searchResult.word, ...form, added_by:nickname };
+    let res;
+    if (searchResult.found) {
+      res = await sb.from("words").update(payload).eq("id", searchResult.found.id).select().single();
+      fire("수정했어요 ✏️");
+    } else {
+      res = await sb.from("words").insert(payload).select().single();
+      fire("등록 완료! 모두와 공유됩니다 🌐");
+    }
+    setSearchResult(r => ({ ...r, found: res.data, examples: findExamples(r.word) }));
+    setShowForm(false);
+    setSavingWord(false);
+  }
+
+  async function toggleBookmark() {
+    const w = searchResult;
+    if (!w) return;
+    const exists = bookmarks.find(b => b.word === w.word);
+    if (exists) {
+      await sb.from("bookmarks").delete().eq("id", exists.id);
+      fire("단어장에서 제거했어요");
+    } else {
+      const fd = w.found;
+      await sb.from("bookmarks").insert({
+        nickname, word:w.word,
+        reading: fd?.reading||"", meaning_ko: fd?.meaning_ko||"(미등록)",
+        part_of_speech: fd?.part_of_speech||"", note: fd?.note||"",
+        examples: JSON.stringify(w.examples)
+      });
+      fire("내 단어장에 저장했어요! 📚");
+    }
+  }
+
+  async function addSong() {
+    if (!newSong.title.trim() || !newSong.lyrics.trim()) return;
+    await sb.from("songs").insert({ ...newSong, added_by: nickname });
+    setNewSong({ title:"", artist:"", lyrics:"" });
+    setShowAddSong(false);
+    fire(`"${newSong.title}" 추가 완료!`);
+  }
+
+  async function deleteSong(id, e) {
+    e.stopPropagation();
+    await sb.from("songs").delete().eq("id", id);
+  }
+
+  async function deleteBookmark(id) {
+    await sb.from("bookmarks").delete().eq("id", id);
+    fire("삭제했어요");
+  }
+
+  // ── guards ──
+  if (!nickname) return <NicknameScreen onDone={handleNickname} />;
+
+  const isBookmarked = searchResult && bookmarks.find(b => b.word === searchResult.word);
+
+  return (
+    <div style={{ minHeight:"100vh", background:"var(--bg)", position:"relative" }}>
+      {/* ambient blobs */}
+      <div style={{ position:"fixed", width:700, height:700, borderRadius:"50%", background:"radial-gradient(circle, rgba(167,139,250,.04) 0%, transparent 70%)", top:-200, right:-200, pointerEvents:"none", zIndex:0 }} />
+      <div style={{ position:"fixed", width:500, height:500, borderRadius:"50%", background:"radial-gradient(circle, rgba(212,168,83,.04) 0%, transparent 70%)", bottom:-100, left:-100, pointerEvents:"none", zIndex:0 }} />
+
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+
+      <div style={{ position:"relative", zIndex:1, maxWidth:660, margin:"0 auto", padding:"0 16px 100px" }}>
+
+        {/* ── Header ── */}
+        <div style={{ padding:"36px 0 28px", textAlign:"center" }}>
+          <div style={{ fontSize:10, letterSpacing:5, color:"var(--text-mute)", textTransform:"uppercase", marginBottom:12 }}>
+            Japanese Lyric Dictionary
+          </div>
+          <h1 className="jp" style={{
+            fontSize:40, fontWeight:700,
+            background:"linear-gradient(135deg, #f0e0c0 0%, var(--gold) 35%, #d4a0f0 70%, var(--purple) 100%)",
+            WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
+            letterSpacing:"-.02em", lineHeight:1.1, marginBottom:10
+          }}>
+            歌詞単語帳
+          </h1>
+
+          {/* divider */}
+          <div style={{ display:"flex", alignItems:"center", gap:12, margin:"14px 0" }}>
+            <div style={{ flex:1, height:1, background:"linear-gradient(to right, transparent, var(--border))" }} />
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <div style={{ width:6, height:6, borderRadius:"50%", background:"var(--gold-dim)" }} />
+              <span style={{ fontSize:11, color:"var(--text-mute)" }}>👤 {nickname}</span>
+              <button className="tab-btn" onClick={() => { localStorage.removeItem("vocab_nick"); setNickname(""); }} style={{ fontSize:10, color:"var(--text-mute)", borderBottom:"1px solid var(--text-mute)", lineHeight:1.2 }}>변경</button>
+              <div style={{ width:6, height:6, borderRadius:"50%", background:"var(--gold-dim)" }} />
+            </div>
+            <div style={{ flex:1, height:1, background:"linear-gradient(to left, transparent, var(--border))" }} />
+          </div>
+        </div>
+
+        {/* ── Tabs ── */}
+        <div style={{ marginBottom:24 }}>
+          <TabBar tab={tab} setTab={setTab} counts={{ words:words.length, songs:songs.length, bookmarks:bookmarks.length }} />
+        </div>
+
+        {/* ════ SEARCH ════ */}
+        {tab === "search" && (
+          <div>
+            <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+              <div style={{ position:"relative", flex:1 }}>
+                <input
+                  className="input-base jp"
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  onKeyDown={e => e.key==="Enter" && handleSearch()}
+                  placeholder="단어 입력 (예: 溶ける、夜、走る)"
+                  style={{ fontSize:17, paddingRight:42 }}
+                />
+                {query && (
+                  <button className="btn" onClick={() => { setQuery(""); setSearchResult(null); }} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", color:"var(--text-mute)", fontSize:16 }}>✕</button>
+                )}
+              </div>
+              <button className="btn" onClick={handleSearch} style={{
+                background:"linear-gradient(135deg, #c9943a, #a07828)",
+                color:"#080604", borderRadius:12, padding:"0 22px",
+                fontWeight:700, fontSize:14,
+                boxShadow:"0 4px 16px rgba(212,168,83,.2)"
+              }}>
+                <span className="jp">検索</span>
+              </button>
+            </div>
+
+            {searchResult && (
+              <>
+                <WordCard
+                  result={searchResult}
+                  isBookmarked={!!isBookmarked}
+                  onBookmark={toggleBookmark}
+                  onEdit={() => setShowForm(f => !f)}
+                  nickname={nickname}
+                />
+                {showForm && (
+                  <WordForm
+                    word={searchResult.word}
+                    existing={searchResult.found}
+                    onSave={saveWord}
+                    onCancel={() => setShowForm(false)}
+                    saving={savingWord}
+                  />
+                )}
+              </>
+            )}
+
+            {!searchResult && (
+              <div className="fade-in" style={{ textAlign:"center", padding:"60px 0" }}>
+                <div className="jp pulse" style={{ fontSize:52, marginBottom:18, opacity:.25 }}>詞</div>
+                <div style={{ fontSize:14, color:"var(--text-mute)", lineHeight:1.8 }}>
+                  가사 속 단어를 검색해보세요<br/>
+                  <span style={{ fontSize:12 }}>처음 나오는 단어는 직접 등록해서 공유할 수 있어요</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════ SHARED WORDS ════ */}
+        {tab === "words" && (
+          <div className="fade-in">
+            <div style={{ fontSize:12, color:"var(--text-mute)", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ width:6, height:6, borderRadius:"50%", background:"#4ade80", display:"inline-block", boxShadow:"0 0 6px #4ade80" }} />
+              동아리원이 함께 만드는 단어 사전 · {words.length}개
+            </div>
+
+            {words.length === 0 ? (
+              <div style={{ textAlign:"center", padding:"60px 0", color:"var(--text-mute)" }}>
+                <div className="jp" style={{ fontSize:40, opacity:.2, marginBottom:16 }}>空</div>
+                <div style={{ fontSize:13 }}>아직 등록된 단어가 없어요<br/><span style={{ fontSize:11 }}>첫 번째 단어를 등록해보세요!</span></div>
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {[...words].sort((a,b)=>a.word.localeCompare(b.word,"ja")).map(w => (
+                  <div key={w.id} className="card card-gold" style={{ padding:"16px 20px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex", alignItems:"baseline", gap:10, flexWrap:"wrap", marginBottom:6 }}>
+                          <span className="jp" style={{ fontSize:24, color:"var(--text)", fontWeight:500 }}>{w.word}</span>
+                          {w.reading && <span style={{ fontSize:13, color:"var(--purple)" }}>{w.reading}</span>}
+                          {w.part_of_speech && <span className="tag">{w.part_of_speech}</span>}
+                        </div>
+                        <div style={{ fontSize:16, color:"var(--gold)", marginBottom:4 }}>{w.meaning_ko}</div>
+                        {w.note && <div style={{ fontSize:11, color:"var(--text-mute)", lineHeight:1.6 }}>{w.note}</div>}
+                        <div style={{ fontSize:10, color:"var(--text-mute)", marginTop:6 }}>등록: {w.added_by}</div>
+                      </div>
+                      <button className="btn" onClick={() => {
+                        setQuery(w.word);
+                        setTab("search");
+                        setSearchResult({ word:w.word, found:w, examples:findExamples(w.word) });
+                        setShowForm(false);
+                      }} style={{ background:"var(--surface2)", border:"1px solid var(--border2)", color:"var(--text-mute)", borderRadius:10, padding:"7px 12px", fontSize:11, whiteSpace:"nowrap" }}>
+                        예문 →
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════ SONGS ════ */}
+        {tab === "songs" && (
+          <div className="fade-in">
+            {selectedSong ? (
+              <>
+                <button className="tab-btn" onClick={() => setSelectedSong(null)} style={{ color:"var(--text-mute)", fontSize:13, marginBottom:18, display:"flex", alignItems:"center", gap:6 }}>
+                  ← 목록으로
+                </button>
+                <div className="card" style={{ overflow:"hidden" }}>
+                  <div style={{ padding:"24px", borderBottom:"1px solid var(--border)", background:"linear-gradient(135deg, rgba(22,18,40,.9), var(--surface))" }}>
+                    <div style={{ fontSize:10, letterSpacing:4, color:"var(--text-mute)", marginBottom:8 }}>LYRICS</div>
+                    <div className="jp" style={{ fontSize:24, color:"var(--text)", marginBottom:4 }}>{selectedSong.title}</div>
+                    {selectedSong.artist && <div style={{ fontSize:13, color:"var(--text-mute)" }}>{selectedSong.artist}</div>}
+                  </div>
+                  <div style={{ padding:"24px 28px" }}>
+                    {selectedSong.lyrics.split("\n").map((line, i) => (
+                      <div key={i} className="jp" onClick={() => { if(line.trim()){ setQuery(line.trim()); setTab("search"); handleSearch(); }}}
+                        style={{ fontSize:17, color:"#c8bca8", lineHeight:2.4, padding:"2px 10px", margin:"0 -10px", borderRadius:8, minHeight:line.trim()?"auto":20, transition:"background .15s, color .15s", cursor:line.trim()?"pointer":"default" }}
+                        onMouseEnter={e => line.trim() && Object.assign(e.currentTarget.style, { background:"rgba(212,168,83,.06)", color:"var(--text)" })}
+                        onMouseLeave={e => Object.assign(e.currentTarget.style, { background:"transparent", color:"#c8bca8" })}>
+                        {line || "\u00A0"}
+                      </div>
+                    ))}
+                    <div style={{ marginTop:16, fontSize:11, color:"var(--text-mute)", textAlign:"center" }}>줄을 클릭하면 해당 단어를 검색해요</div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                  <div style={{ fontSize:12, color:"var(--text-mute)", display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ width:6, height:6, borderRadius:"50%", background:"#4ade80", display:"inline-block", boxShadow:"0 0 6px #4ade80" }} />
+                    공유 노래 목록 · {songs.length}곡
+                  </div>
+                  <button className="btn" onClick={() => setShowAddSong(f=>!f)} style={{
+                    background: showAddSong ? "var(--surface2)" : "linear-gradient(135deg,#c9943a,#a07828)",
+                    color: showAddSong ? "var(--text-mute)" : "#080604",
+                    border: showAddSong ? "1px solid var(--border2)" : "none",
+                    borderRadius:12, padding:"9px 16px", fontSize:13, fontWeight:600
+                  }}>
+                    {showAddSong ? "✕ 닫기" : "+ 노래 추가"}
+                  </button>
+                </div>
+
+                {showAddSong && (
+                  <div className="card fade-up" style={{ padding:20, marginBottom:16, border:"1px solid var(--gold-dim)" }}>
+                    <div style={{ fontSize:12, color:"var(--gold)", marginBottom:14 }}>새 노래 추가 — 모두에게 공유됩니다</div>
+                    <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+                      <input className="input-base jp" value={newSong.title} onChange={e=>setNewSong({...newSong,title:e.target.value})} placeholder="노래 제목 *" style={{flex:2}} />
+                      <input className="input-base" value={newSong.artist} onChange={e=>setNewSong({...newSong,artist:e.target.value})} placeholder="아티스트" style={{flex:1}} />
+                    </div>
+                    <textarea className="input-base jp" value={newSong.lyrics} onChange={e=>setNewSong({...newSong,lyrics:e.target.value})} rows={9} placeholder="가사를 붙여넣으세요 *" style={{ resize:"vertical", lineHeight:1.9, fontSize:15, marginBottom:10 }} />
+                    <button className="btn" onClick={addSong} style={{ width:"100%", background:"linear-gradient(135deg,#c9943a,#a07828)", color:"#080604", borderRadius:12, padding:13, fontWeight:700, fontSize:14, boxShadow:"0 4px 16px rgba(212,168,83,.2)" }}>
+                      추가하기
+                    </button>
+                  </div>
+                )}
+
+                {loading ? (
+                  <div style={{ textAlign:"center", padding:60 }}><Spinner /></div>
+                ) : songs.length === 0 ? (
+                  <div style={{ textAlign:"center", padding:"60px 0", color:"var(--text-mute)" }}>
+                    <div className="jp" style={{ fontSize:40, opacity:.2, marginBottom:16 }}>空</div>
+                    <div style={{ fontSize:13 }}>아직 등록된 노래가 없어요</div>
+                  </div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {songs.map(s => (
+                      <div key={s.id} className="card card-gold" style={{ padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }} onClick={() => setSelectedSong(s)}>
+                        <div>
+                          <div className="jp" style={{ fontSize:16, color:"var(--text)", marginBottom:4 }}>{s.title}</div>
+                          <div style={{ fontSize:11, color:"var(--text-mute)" }}>
+                            {s.artist && `${s.artist} · `}{(s.lyrics||"").split("\n").filter(l=>l.trim()).length}줄 · 추가: {s.added_by}
+                          </div>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }} onClick={e=>e.stopPropagation()}>
+                          <span style={{ fontSize:11, color:"var(--text-mute)" }}>가사 →</span>
+                          <button className="btn" onClick={e=>deleteSong(s.id,e)} style={{ background:"transparent", border:"1px solid var(--border2)", color:"var(--text-mute)", borderRadius:8, padding:"5px 9px", fontSize:11 }}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ════ BOOKMARKS ════ */}
+        {tab === "bookmarks" && (
+          <div className="fade-in">
+            <div style={{ fontSize:12, color:"var(--text-mute)", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ width:6, height:6, borderRadius:"50%", background:"var(--purple)", display:"inline-block", boxShadow:"0 0 6px var(--purple)" }} />
+              {nickname}의 단어장 · {bookmarks.length}개
+            </div>
+            {bookmarks.length === 0 ? (
+              <div style={{ textAlign:"center", padding:"60px 0", color:"var(--text-mute)" }}>
+                <div className="jp" style={{ fontSize:40, opacity:.2, marginBottom:16 }}>空</div>
+                <div style={{ fontSize:13 }}>아직 저장한 단어가 없어요<br/><span style={{fontSize:11}}>검색 후 ☆ 저장 버튼을 눌러보세요</span></div>
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {bookmarks.map(b => {
+                  let exs = [];
+                  try { exs = JSON.parse(b.examples||"[]"); } catch {}
+                  return (
+                    <div key={b.id} className="card card-purple" style={{ overflow:"hidden" }}>
+                      <div style={{ padding:"16px 20px", borderBottom: exs.length?"1px solid var(--border)":"none" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                          <div>
+                            <div style={{ display:"flex", alignItems:"baseline", gap:10, marginBottom:4 }}>
+                              <span className="jp" style={{ fontSize:24, color:"var(--text)" }}>{b.word}</span>
+                              {b.reading && <span style={{ fontSize:12, color:"var(--purple)" }}>{b.reading}</span>}
+                              {b.part_of_speech && <span className="tag">{b.part_of_speech}</span>}
+                            </div>
+                            <div style={{ fontSize:17, color:"var(--gold)", marginBottom:4 }}>{b.meaning_ko}</div>
+                            {b.note && <div style={{ fontSize:11, color:"var(--text-mute)", lineHeight:1.6 }}>{b.note}</div>}
+                          </div>
+                          <button className="btn" onClick={() => deleteBookmark(b.id)} style={{ background:"transparent", border:"1px solid var(--border2)", color:"var(--text-mute)", borderRadius:8, padding:"5px 9px", fontSize:11, flexShrink:0 }}>✕</button>
+                        </div>
+                      </div>
+                      {exs.slice(0,2).map((ex, i) => (
+                        <div key={i} style={{ padding:"10px 20px", borderBottom:i===0&&exs.length>1?"1px solid var(--border)":"none" }}>
+                          <div style={{ fontSize:10, color:"var(--text-mute)", marginBottom:4 }}>♪ {ex.songTitle}</div>
+                          <div className="jp" style={{ fontSize:13, color:"var(--text-dim)", lineHeight:1.7 }}>{ex.sentence}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
