@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>歌詞単語帳</title>
+  <title>케타와쿠 검색기</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;700&family=Noto+Sans+KR:wght@300;400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -243,10 +243,10 @@ function NicknameScreen({ onDone, dictProgress = 0, dictReady = false }) {
       <div className="fade-up" style={{ width:"100%", maxWidth:360, textAlign:"center" }}>
         <div className="fade-in" key={ei} style={{ fontSize:48, marginBottom:20 }}>{emojis[ei]}</div>
         <div style={{ fontSize:10, letterSpacing:5, color:"var(--text-mute)", textTransform:"uppercase", marginBottom:10 }}>Japanese Lyric Dictionary</div>
-        <h1 className="jp" style={{ fontSize:42, fontWeight:700, marginBottom:6, background:"linear-gradient(135deg,#f0e0c0 0%,var(--gold) 40%,var(--purple) 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>케혼동</h1>
+        <h1 className="jp" style={{ fontSize:42, fontWeight:700, marginBottom:6, background:"linear-gradient(135deg,#f0e0c0 0%,var(--gold) 40%,var(--purple) 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>케본동</h1>
         <p style={{ color:"var(--text-dim)", fontSize:13, marginBottom:36, lineHeight:1.6 }}>
           ~케타와쿠편~<br/>
-          <span style={{ color:"var(--text-mute)", fontSize:11 }}>형태소 분석으로 활용형도 찾아줘요</span>
+          <span style={{ color:"var(--text-mute)", fontSize:11 }}>형태소 분석... 기능을 넣어보려고 했는데,</span>
         </p>
         <input className="input-base" value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&val.trim()&&onDone(val.trim())} placeholder="닉네임을 입력하세요" autoFocus style={{ fontSize:16, padding:"15px 18px", borderRadius:14, textAlign:"center", marginBottom:12 }} />
         <button className="btn" onClick={()=>val.trim()&&onDone(val.trim())} style={{ width:"100%", background:"linear-gradient(135deg,#c9943a,#b8832a)", color:"#0e0a04", borderRadius:14, padding:15, fontWeight:700, fontSize:15, boxShadow:"0 4px 24px rgba(212,168,83,.25)" }}>
@@ -378,6 +378,7 @@ function App() {
   const [savingWord, setSavingWord]   = useState(false);
 
   const [selectedSong, setSelectedSong] = useState(null);
+  const [highlightSentence, setHighlightSentence] = useState(null); // 가사에서 강조할 문장
   const [showAddSong, setShowAddSong]   = useState(false);
   const [newSong, setNewSong] = useState({ title:"", artist:"", lyrics:"" });
   const [toast, setToast] = useState(null);
@@ -476,7 +477,7 @@ function App() {
         {/* Header */}
         <div style={{ padding:"36px 0 28px", textAlign:"center" }}>
           <div style={{ fontSize:10, letterSpacing:5, color:"var(--text-mute)", textTransform:"uppercase", marginBottom:12 }}>Japanese Lyric Dictionary</div>
-          <h1 className="jp" style={{ fontSize:40, fontWeight:700, background:"linear-gradient(135deg,#f0e0c0 0%,var(--gold) 35%,#d4a0f0 70%,var(--purple) 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", letterSpacing:"-.02em", lineHeight:1.1, marginBottom:10 }}>케혼동</h1>
+          <h1 className="jp" style={{ fontSize:40, fontWeight:700, background:"linear-gradient(135deg,#f0e0c0 0%,var(--gold) 35%,#d4a0f0 70%,var(--purple) 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", letterSpacing:"-.02em", lineHeight:1.1, marginBottom:10 }}>케혼동×케타와쿠</h1>
           <div style={{ display:"flex", alignItems:"center", gap:12, margin:"14px 0" }}>
             <div style={{ flex:1, height:1, background:"linear-gradient(to right,transparent,var(--border))" }} />
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -582,16 +583,29 @@ function App() {
                     ) : (
                       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                         {searchResult.examples.map((ex, i) => (
-                          <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:12, padding:"13px 16px" }}>
-                            <div style={{ fontSize:10, color:"var(--text-mute)", marginBottom:7, display:"flex", alignItems:"center", gap:6 }}>
-                              <span style={{ color:"var(--gold-dim)" }}>♪</span>
-                              <span>{ex.songTitle}</span>
-                              {ex.artist && <span style={{ color:"var(--border2)" }}>· {ex.artist}</span>}
-                              {ex.positions?.length > 0 && ex.positions[0].surface !== searchResult.word && (
-                                <span style={{ color:"var(--purple)", background:"rgba(167,139,250,.1)", padding:"1px 6px", borderRadius:10, fontSize:9 }}>
-                                  {ex.positions[0].surface} (활용형)
-                                </span>
-                              )}
+                          <div key={i}
+                            className="card-gold"
+                            onClick={() => {
+                              const song = songs.find(s => s.title === ex.songTitle);
+                              if (song) {
+                                setSelectedSong(song);
+                                setHighlightSentence(ex.sentence);
+                                setTab("songs");
+                              }
+                            }}
+                            style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:12, padding:"13px 16px", cursor:"pointer", transition:"border-color .2s" }}>
+                            <div style={{ fontSize:10, color:"var(--text-mute)", marginBottom:7, display:"flex", alignItems:"center", justifyContent:"space-between", gap:6 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                <span style={{ color:"var(--gold-dim)" }}>♪</span>
+                                <span>{ex.songTitle}</span>
+                                {ex.artist && <span style={{ color:"var(--border2)" }}>· {ex.artist}</span>}
+                                {ex.positions?.length > 0 && ex.positions[0].surface !== searchResult.word && (
+                                  <span style={{ color:"var(--purple)", background:"rgba(167,139,250,.1)", padding:"1px 6px", borderRadius:10, fontSize:9 }}>
+                                    {ex.positions[0].surface} (활용형)
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{ fontSize:10, color:"var(--text-mute)", whiteSpace:"nowrap" }}>가사 전체 →</span>
                             </div>
                             <div className="jp" style={{ fontSize:16, color:"#d4c8b4", lineHeight:1.9 }}>
                               <HighlightedLine sentence={ex.sentence} positions={ex.positions} baseForm={ex.baseForm} originalWord={searchResult.word} />
@@ -664,7 +678,7 @@ function App() {
           <div className="fade-in">
             {selectedSong ? (
               <>
-                <button className="tab-btn" onClick={()=>setSelectedSong(null)} style={{ color:"var(--text-mute)", fontSize:13, marginBottom:18, display:"flex", alignItems:"center", gap:6 }}>← 목록으로</button>
+                <button className="tab-btn" onClick={()=>{ setSelectedSong(null); setHighlightSentence(null); }} style={{ color:"var(--text-mute)", fontSize:13, marginBottom:18, display:"flex", alignItems:"center", gap:6 }}>← 목록으로</button>
                 <div className="card" style={{ overflow:"hidden" }}>
                   <div style={{ padding:"24px", borderBottom:"1px solid var(--border)", background:"linear-gradient(135deg,rgba(22,18,40,.9),var(--surface))" }}>
                     <div style={{ fontSize:10, letterSpacing:4, color:"var(--text-mute)", marginBottom:8 }}>LYRICS</div>
@@ -672,15 +686,28 @@ function App() {
                     {selectedSong.artist && <div style={{ fontSize:13, color:"var(--text-mute)" }}>{selectedSong.artist}</div>}
                   </div>
                   <div style={{ padding:"24px 28px" }}>
-                    {selectedSong.lyrics.split("\n").map((line,i) => (
-                      <div key={i} className="jp" onClick={()=>{ if(line.trim()){setQuery(line.trim());setTab("search");const bf=getBaseForm(tokenizer,line.trim());const found=words.find(x=>x.word===bf||x.word===line.trim())||null;setSearchResult({word:line.trim(),baseForm:bf,found,examples:findExamples(tokenizer,songs,line.trim())});setShowForm(!found);}}}
-                        style={{ fontSize:17, color:"#c8bca8", lineHeight:2.4, padding:"2px 10px", margin:"0 -10px", borderRadius:8, minHeight:line.trim()?"auto":20, transition:"background .15s,color .15s", cursor:line.trim()?"pointer":"default" }}
-                        onMouseEnter={e=>line.trim()&&Object.assign(e.currentTarget.style,{background:"rgba(212,168,83,.06)",color:"var(--text)"})}
-                        onMouseLeave={e=>Object.assign(e.currentTarget.style,{background:"transparent",color:"#c8bca8"})}>
-                        {line||"\u00A0"}
-                      </div>
-                    ))}
-                    <div style={{ marginTop:16, fontSize:11, color:"var(--text-mute)", textAlign:"center" }}>줄을 클릭하면 해당 줄 전체를 검색해요</div>
+                    {selectedSong.lyrics.split("\n").map((line,i) => {
+                      const isHighlighted = highlightSentence && line.trim() === highlightSentence.trim();
+                      return (
+                        <div key={i} className="jp"
+                          ref={el => { if (isHighlighted && el) setTimeout(() => el.scrollIntoView({ behavior:"smooth", block:"center" }), 150); }}
+                          onClick={()=>{ if(line.trim()){ setHighlightSentence(null); setQuery(line.trim()); setTab("search"); const bf=getBaseForm(tokenizer,line.trim()); const found=words.find(x=>x.word===bf||x.word===line.trim())||null; setSearchResult({word:line.trim(),baseForm:bf,found,examples:findExamples(tokenizer,songs,line.trim())}); setShowForm(!found); }}}
+                          style={{
+                            fontSize:17, lineHeight:2.4, padding:"4px 12px", margin:"0 -12px", borderRadius:8,
+                            minHeight: line.trim() ? "auto" : 20,
+                            transition:"background .2s, color .2s",
+                            cursor: line.trim() ? "pointer" : "default",
+                            color: isHighlighted ? "var(--text)" : "#c8bca8",
+                            background: isHighlighted ? "rgba(212,168,83,.1)" : "transparent",
+                            borderLeft: isHighlighted ? "3px solid var(--gold)" : "3px solid transparent",
+                          }}
+                          onMouseEnter={e=>{ if (!isHighlighted && line.trim()) Object.assign(e.currentTarget.style, {background:"rgba(212,168,83,.06)", color:"var(--text)"}); }}
+                          onMouseLeave={e=>{ if (!isHighlighted) Object.assign(e.currentTarget.style, {background:"transparent", color:"#c8bca8"}); }}>
+                          {line || "\u00A0"}
+                        </div>
+                      );
+                    })}
+                    <div style={{ marginTop:16, fontSize:11, color:"var(--text-mute)", textAlign:"center" }}>줄을 클릭하면 해당 줄로 검색해요</div>
                   </div>
                 </div>
               </>
